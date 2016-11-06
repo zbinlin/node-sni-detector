@@ -1,0 +1,27 @@
+{
+  "name": "sni-proxy-scanner",
+  "version": "1.0.0",
+  "description": "用于扫描发现 SNI 代理服务器",
+  "main": "index.js",
+  "bin": {
+    "sni-proxy-scan": "bin/cli"
+  },
+  "scripts": {
+    "test": "mocha"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zbinlin/node-sni-proxy-scanner.git"
+  },
+  "keywords": [
+    "sni",
+    "sni-proxy",
+    "scanner"
+  ],
+  "author": "zbinlin",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/zbinlin/node-sni-proxy-scanner/issues"
+  },
+  "homepage": "https://github.com/zbinlin/node-sni-proxy-scanner#readme"
+}
