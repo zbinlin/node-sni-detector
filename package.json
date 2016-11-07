@@ -1,17 +1,17 @@
 {
-  "name": "sni-proxy-scanner",
+  "name": "sni-detector",
   "version": "1.0.0",
-  "description": "用于扫描发现 SNI 代理服务器",
+  "description": "用于验证 SNI 服务器",
   "main": "index.js",
   "bin": {
-    "sni-proxy-scan": "bin/cli"
+    "sni-detect": "bin/cli"
   },
   "scripts": {
     "test": "mocha tests/*.js"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/zbinlin/node-sni-proxy-scanner.git"
+    "url": "git+https://github.com/zbinlin/node-sni-detector.git"
   },
   "keywords": [
     "sni",
@@ -21,9 +21,9 @@
   "author": "zbinlin",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/zbinlin/node-sni-proxy-scanner/issues"
+    "url": "https://github.com/zbinlin/node-sni-detector/issues"
   },
-  "homepage": "https://github.com/zbinlin/node-sni-proxy-scanner#readme",
+  "homepage": "https://github.com/zbinlin/node-sni-detector#readme",
   "dependencies": {
     "commander": "^2.9.0",
     "ip-helper": "^2.0.1"
@@ -31,5 +31,8 @@
   "devDependencies": {
     "chai": "^3.5.0",
     "mocha": "^3.1.2"
+  },
+  "directories": {
+    "test": "tests"
   }
 }
