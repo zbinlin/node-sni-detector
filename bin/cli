@@ -2,6 +2,7 @@
 
 "use strict";
 
+const net = require("net");
 const path = require("path");
 const stream = require("stream");
 const fs = require("fs");
@@ -17,9 +18,11 @@ const MAX_BUFFER_LINES = 65535;
 const DEFAULT_PARALLELS = 256;
 const DEFAULT_TIMEOUT = 1000; // 1s
 
+let ipList;
+
 program
     .version(pkg.version)
-    .usage("[options]")
+    .usage("[options] [ip ...]")
     .option("-i, --in <file>", "指定 ip 列表文件，如果未指定，默认使用 stdin")
     .option("-o, --out <file>", "输出可用的 SNI proxy 列表文件，如果未指定，默认输出到 stdout")
     .option("-c, --continue [file]", `保存扫描记录，可用于中断后恢复，默认为：$PWD/${DEFAULT_SCAN_RESULT_FILENAME}`)
@@ -27,12 +30,44 @@ program
     .option("-t, --tests [servernames]", `测试的 SNI 域名，默认为 ${DEFAULT_TEST_SERVER_NAME.join(",")}`)
     .option("--timeout <seconds>", `设置超时时间，如果未设置，默认为 ${DEFAULT_TIMEOUT}ms`)
     .option("--silent", "安静模式，如果启用，则不在终端输出扫描过程")
+    .option("--verbose", "显示详细的错误信息")
+    .arguments("[ip...]")
+    .action(function (ips) {
+        for (const ip of ips) {
+            if (net.isIP(ip) !== 4 && !ipHelper.isIPRange(ip)) {
+                console.log(net.isIP(ip), ipHelper.isIPRange(ip));
+                console.error(`${ip} 不是一个有效的 IP 或 IP range`);
+                process.exit(1);
+            }
+        }
+        ipList = ips;
+    })
     .parse(process.argv);
 
-const input = program.in ? fs.createReadStream(program.in, {
-    encoding: "utf8",
-}) : process.stdin;
-const output = program.out ? fs.createWriteStream(program.out) : process.stdout;
+const isStdinTTY = process.stdin.isTTY;
+const input = (() => {
+    if (program.in) {
+        return fs.createReadStream(program.in, {
+            encoding: "utf8",
+        });
+    } else if (ipList) {
+        return new stream.Readable({
+            read(size) {
+                this.push(ipList.join("\n"));
+                this.push(null);
+            },
+        });
+    } else {
+        return process.stdin;
+    }
+})();
+const isInteractiveMode = input === process.stdin && isStdinTTY;
+
+const output = !isInteractiveMode && program.out && fs.createWriteStream(program.out);
+
+const silent = isInteractiveMode ? false : program.silent;
+const verbose = program.verbose;
+
 const [scannedResult, scanLogger] = (function () {
     if (!program.continue) {
         return [new Map(), createBlackHoleStream()];
@@ -109,8 +144,11 @@ function getNextIp(ips) {
 }
 
 const task = new Task(parallels, () => {
-    if (input === process.stdin && process.stdin.isTTY) {
-        console.error("交互模式，按 <CTRL+D> 退出");
+    if (isInteractiveMode) {
+        console.error("进入交互模式，按 <CTRL+D> 退出程序");
+        if (program.out) {
+            console.warn("注意，在交互模式下，-o, --out 参数将被忽略");
+        }
     }
     input.on("data", onData);
     input.once("end", onEnd);
@@ -144,6 +182,12 @@ const task = new Task(parallels, () => {
             input.removeListener("error", onError);
             lines.length = 0;
             finished = true;
+            for (const [resolve] of pendings) {
+                resolve({
+                    done: true,
+                });
+            }
+            pendings.length = 0;
             return Promise.resolve({
                 done: true,
             });
@@ -202,33 +246,51 @@ task.start(ip => {
     if (scannedResult.has(ip)) {
         return Promise.resolve();
     }
+    const stdoutFormatter = process.stdout.isTTY ? formmater : text => text;
+    const stderrFormatter = process.stderr.isTTY ? formmater : text => text;
     return detectSNIProxy(ip, testDomains, timeout).then(() => {
-        if (!program.silent && (output !== process.stdout || !process.stdout.isTTY)) {
-            console.error(`${ip}: OK`);
+        if (!silent) {
+            const text = isInteractiveMode ?
+                `${ip} ${stdoutFormatter("OK", "green")}` :
+                stdoutFormatter(ip, "green");
+            console.log(text);
         }
-        return Promise.all([
-            write(scanLogger, `${ip},OK\n`),
-            write(output, `${ip}\n`),
-        ]);
+        if (output) {
+            return write(output, ip);
+        }
     }, ex => {
-        if (!program.silent) {
-            if (ex) {
-                console.error(ex);
-            } else {
-                console.error(`${ip}: Failure`);
+        if (!silent) {
+            const text = isInteractiveMode ?
+                `${ip} ${stderrFormatter("Failure", "red")}` :
+                stderrFormatter(ip, "red");
+            console.error(text);
+            if (verbose) {
+                console.error(`[${ip}]: ${ex.message || ex}`);
             }
         }
-        return write(scanLogger, `${ip},FAILURE\n`);
     });
-}, () => {
-    output.end();
-    scanLogger.end();
+    function formmater(text, color) {
+        switch (color) {
+            case "green":
+                return `\u001b[32m${text}\u001b[39m`;
+            case "red":
+                return `\u001b[31m${text}\u001b[39m`;
+            default:
+                return text;
+        }
+    }
 }).then(() => {
-    console.error("finished");
+    output && output.end();
+    scanLogger.end();
 }, ex => {
-    console.log(ex);
+    output && output.end();
+    scanLogger.end();
+    console.error(ex);
 });
 
 process.on("SIGINT", () => {
+    if (isInteractiveMode) {
+        process.stdin.end();
+    }
     task.stop();
 });
