@@ -15,9 +15,9 @@
 ## 使用方法
 
 ```shell
-npm install -g sni-proxy-scanner
+npm install -g sni-detector
 
-sni-proxy-scan --help
+sni-detect --help
 ```
 
 `-i, --in` 参数接收一个文件路径，该路径指向一个包含 IP 列表的纯文件文件。
