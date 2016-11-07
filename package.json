@@ -7,7 +7,7 @@
     "sni-proxy-scan": "bin/cli"
   },
   "scripts": {
-    "test": "mocha"
+    "test": "mocha tests/*.js"
   },
   "repository": {
     "type": "git",
@@ -23,5 +23,13 @@
   "bugs": {
     "url": "https://github.com/zbinlin/node-sni-proxy-scanner/issues"
   },
-  "homepage": "https://github.com/zbinlin/node-sni-proxy-scanner#readme"
+  "homepage": "https://github.com/zbinlin/node-sni-proxy-scanner#readme",
+  "dependencies": {
+    "commander": "^2.9.0",
+    "ip-helper": "^2.0.1"
+  },
+  "devDependencies": {
+    "chai": "^3.5.0",
+    "mocha": "^3.1.2"
+  }
 }

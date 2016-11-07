@@ -1,3 +1,234 @@
 #!/usr/bin/env node
 
 "use strict";
+
+const path = require("path");
+const stream = require("stream");
+const fs = require("fs");
+const program = require("commander");
+const pkg = require("../package.json");
+const Task = require("../lib/task");
+const detectSNIProxy = require("../lib/detect-sni-proxy");
+const ipHelper = require("ip-helper");
+
+const DEFAULT_SCAN_RESULT_FILENAME = "scan-result.txt";
+const DEFAULT_TEST_SERVER_NAME = ["www.baidu.com", "www.google.com"];
+const MAX_BUFFER_LINES = 65535;
+const DEFAULT_PARALLELS = 256;
+const DEFAULT_TIMEOUT = 1000; // 1s
+
+program
+    .version(pkg.version)
+    .usage("[options]")
+    .option("-i, --in <file>", "指定 ip 列表文件，如果未指定，默认使用 stdin")
+    .option("-o, --out <file>", "输出可用的 SNI proxy 列表文件，如果未指定，默认输出到 stdout")
+    .option("-c, --continue [file]", `保存扫描记录，可用于中断后恢复，默认为：$PWD/${DEFAULT_SCAN_RESULT_FILENAME}`)
+    .option("-p, --parallels [number]", `并行扫描数，默认为 ${DEFAULT_PARALLELS}`)
+    .option("-t, --tests [servernames]", `测试的 SNI 域名，默认为 ${DEFAULT_TEST_SERVER_NAME.join(",")}`)
+    .option("--timeout <seconds>", `设置超时时间，如果未设置，默认为 ${DEFAULT_TIMEOUT}ms`)
+    .option("--silent", "安静模式，如果启用，则不在终端输出扫描过程")
+    .parse(process.argv);
+
+const input = program.in ? fs.createReadStream(program.in, {
+    encoding: "utf8",
+}) : process.stdin;
+const output = program.out ? fs.createWriteStream(program.out) : process.stdout;
+const [scannedResult, scanLogger] = (function () {
+    if (!program.continue) {
+        return [new Map(), createBlackHoleStream()];
+    }
+    const out = program.continue === true ?
+        path.join(process.cwd(), DEFAULT_SCAN_RESULT_FILENAME) :
+        program.continue;
+
+    let scanned;
+    try {
+        const str = fs.readFileSync(out, {
+            encoding: "utf8",
+        });
+        const ary = str.split("\n").map(line => {
+            return line.split(/,/);
+        });
+        scanned = new Map(ary);
+    } catch (ex) {
+        scanned = new Map();
+    }
+    return [scanned, fs.createWriteStream(out, {
+        flags: "a",
+    })];
+
+    function createBlackHoleStream() {
+        return new stream.Writable({
+            write(chunk, encoding, next) {
+                next(null);
+            },
+        });
+    }
+})();
+
+const parallels = program.parallels || DEFAULT_PARALLELS;
+
+const testDomains = typeof program.tests !== "string" ?
+    DEFAULT_TEST_SERVER_NAME : program.tests.split(",");
+
+const timeout = program.timeout ?  parseInt(program.timeout, 10) : DEFAULT_TIMEOUT;
+
+function write(stream, data) {
+    return new Promise((resolve, reject) => {
+        const ret = stream.write(data);
+        if (ret) {
+            resolve();
+        } else {
+            stream.once("drain", resolve);
+        }
+    });
+}
+
+function isIterable(iter) {
+    return iter && typeof iter === "object" && typeof iter.next === "function";
+}
+
+function getNextIp(ips) {
+    if (ips.length === 0) return;
+    const ip = ips.shift();
+    if (isIterable(ip)) {
+        const { value, done } = ip.next();
+        if (done) {
+            return getNextIp(ips);
+        } else {
+            ips.unshift(ip);
+            return value;
+        }
+    } else if (ipHelper.isIPRange(ip)) {
+        const iter = ipHelper.convertIPRangeToIterator(ip);
+        ips.unshift(iter);
+        return getNextIp(ips);
+    } else {
+        return ip;
+    }
+}
+
+const task = new Task(parallels, () => {
+    if (input === process.stdin && process.stdin.isTTY) {
+        console.error("交互模式，按 <CTRL+D> 退出");
+    }
+    input.on("data", onData);
+    input.once("end", onEnd);
+    input.on("error", onError);
+    input.pause();
+    const lines = [];
+    let finished = false;
+    let remaining = "";
+    const pendings = [];
+    return {
+        next() {
+            return new Promise((resolve, reject) => {
+                const line = getNextIp(lines);
+                if (line) {
+                    resolve({
+                        value: line,
+                    });
+                } else if (finished) {
+                    resolve({
+                        done: true,
+                    });
+                } else {
+                    pendings.push([resolve, reject]);
+                    input.resume();
+                }
+            });
+        },
+        return() {
+            input.removeListener("data", onData);
+            input.removeListener("end", onEnd);
+            input.removeListener("error", onError);
+            lines.length = 0;
+            finished = true;
+            return Promise.resolve({
+                done: true,
+            });
+        },
+    };
+    function onData(data) {
+        const mul = (remaining + data).split("\n");
+        remaining = mul.pop();
+        if (mul.length) {
+            lines.push(...mul);
+        }
+        tryResolvePendings();
+        if (lines.length > MAX_BUFFER_LINES) {
+            input.pause();
+        }
+    }
+    function onEnd() {
+        finished = true;
+        if (remaining) {
+            lines.push(remaining);
+            remaining = "";
+        }
+        input.removeListener("data", onData);
+        tryResolvePendings();
+    }
+    function onError(err) {
+        input.removeListener("data", onData);
+        lines.length = 0;
+        finished = true;
+        tryResolvePendings();
+    }
+    function tryResolvePendings() {
+        if (pendings.length === 0) return;
+        const line = getNextIp(lines);
+        if (!line && finished) {
+            for (const [resolve] of pendings) {
+                process.nextTick(() => {
+                    resolve({
+                        done: true,
+                    });
+                });
+            }
+        } else if (line) {
+            const [resolve] = pendings.shift();
+            process.nextTick(() => {
+                resolve({
+                    value: line,
+                });
+            });
+            tryResolvePendings();
+        }
+    }
+});
+
+task.start(ip => {
+    if (scannedResult.has(ip)) {
+        return Promise.resolve();
+    }
+    return detectSNIProxy(ip, testDomains, timeout).then(() => {
+        if (!program.silent && (output !== process.stdout || !process.stdout.isTTY)) {
+            console.error(`${ip}: OK`);
+        }
+        return Promise.all([
+            write(scanLogger, `${ip},OK\n`),
+            write(output, `${ip}\n`),
+        ]);
+    }, ex => {
+        if (!program.silent) {
+            if (ex) {
+                console.error(ex);
+            } else {
+                console.error(`${ip}: Failure`);
+            }
+        }
+        return write(scanLogger, `${ip},FAILURE\n`);
+    });
+}, () => {
+    output.end();
+    scanLogger.end();
+}).then(() => {
+    console.error("finished");
+}, ex => {
+    console.log(ex);
+});
+
+process.on("SIGINT", () => {
+    task.stop();
+});
