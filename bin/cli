@@ -248,13 +248,9 @@ task.start(ip => {
     }
     const isStdoutTTY = process.stdout.isTTY;
     const isStderrTTY = process.stderr.isTTY;
-    const stdoutFormatter = isStdoutTTY ? formmater : text => text;
-    const stderrFormatter = isStderrTTY ? formmater : text => text;
     return detectSNIProxy(ip, testDomains, timeout).then(() => {
         if (!silent) {
-            const text = isInteractiveMode || isStdoutTTY ?
-                `${ip} ${stdoutFormatter("OK", "green")}` :
-                stdoutFormatter(ip, "green");
+            const text = isStdoutTTY ? `${ip} ${formmater("OK", "green")}` : ip;
             console.log(text);
         }
         if (output) {
@@ -262,12 +258,12 @@ task.start(ip => {
         }
     }, ex => {
         if (!silent) {
-            const text = isInteractiveMode || isStderrTTY ?
-                `${ip} ${stderrFormatter("Failure", "red")}` :
-                stderrFormatter(ip, "red");
+            const text = isStderrTTY ?  `${ip} ${formmater("Failure", "red")}` : ip;
             console.error(text);
             if (verbose) {
-                console.error(`[${ip}]: ${ex.message || ex}`);
+                console.error(`${
+                    (isStderrTTY ? formmater : v => v)("   Error:", "yellow")
+                } ${String(ex.message || ex).trim()}`);
             }
         }
     });
@@ -277,6 +273,8 @@ task.start(ip => {
                 return `\u001b[32m${text}\u001b[39m`;
             case "red":
                 return `\u001b[31m${text}\u001b[39m`;
+            case "yellow":
+                return `\u001b[33m${text}\u001b[39m`;
             default:
                 return text;
         }
