@@ -15,8 +15,8 @@ const ipHelper = require("ip-helper");
 const DEFAULT_SCAN_RESULT_FILENAME = "scan-result.txt";
 const DEFAULT_TEST_SERVER_NAME = ["www.baidu.com", "www.google.com"];
 const MAX_BUFFER_LINES = 65535;
-const DEFAULT_PARALLELS = 256;
-const DEFAULT_TIMEOUT = 1000; // 1s
+const DEFAULT_PARALLELS = 8;
+const DEFAULT_TIMEOUT = 10000; // 10s
 
 let ipList;
 
