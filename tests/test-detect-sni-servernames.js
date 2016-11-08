@@ -1,16 +1,16 @@
 "use strict";
 
 /* eslint-env mocha */
-const detectSNIProxy = require("../lib/detect-sni-proxy");
+const detectSNI = require("../lib/detect-sni-servernames");
 
 describe("test detectSNIProxy function", () => {
     it("", () => {
-        return detectSNIProxy(
+        return detectSNI(
             "14.215.177.38", ["www.baidu.com", "img.baidu.com"]
         );
     });
     it("", done => {
-        detectSNIProxy(
+        detectSNI(
             "14.215.177.38", ["www.baidu.com", "www.google.com"]
         ).then(() => {
             done(new Error("14.215.177.38 is not a sni proxy"));

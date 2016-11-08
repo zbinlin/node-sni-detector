@@ -9,7 +9,7 @@ const fs = require("fs");
 const program = require("commander");
 const pkg = require("../package.json");
 const Task = require("../lib/task");
-const detectSNIProxy = require("../lib/detect-sni-proxy");
+const detectSNI = require("../lib/detect-sni-servernames");
 const ipHelper = require("ip-helper");
 
 const DEFAULT_SCAN_RESULT_FILENAME = "scan-result.txt";
@@ -24,7 +24,7 @@ program
     .version(pkg.version)
     .usage("[options] [ip ...]")
     .option("-i, --in <file>", "指定 ip 列表文件，如果未指定，默认使用 stdin")
-    .option("-o, --out <file>", "输出可用的 SNI proxy 列表文件，如果未指定，默认输出到 stdout")
+    .option("-o, --out <file>", "输出可用的 SNI IP 列表文件，如果未指定，默认输出到 stdout")
     .option("-c, --continue [file]", `保存扫描记录，可用于中断后恢复，默认为：$PWD/${DEFAULT_SCAN_RESULT_FILENAME}`)
     .option("-p, --parallels [number]", `并行扫描数，默认为 ${DEFAULT_PARALLELS}`)
     .option("-t, --tests [servernames]", `测试的 SNI 域名，默认为 ${DEFAULT_TEST_SERVER_NAME.join(",")}`)
@@ -248,7 +248,7 @@ task.start(ip => {
     }
     const isStdoutTTY = process.stdout.isTTY;
     const isStderrTTY = process.stderr.isTTY;
-    return detectSNIProxy(ip, testDomains, timeout).then(() => {
+    return detectSNI(ip, testDomains, timeout).then(() => {
         if (!silent) {
             const text = isStdoutTTY ? `${ip} ${formmater("OK", "green")}` : ip;
             console.log(text);
