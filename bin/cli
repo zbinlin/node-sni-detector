@@ -254,7 +254,7 @@ task.start(ip => {
             console.log(text);
         }
         if (output) {
-            return write(output, ip);
+            return write(output, `${ip}\n`);
         }
     }, ex => {
         if (!silent) {
