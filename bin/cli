@@ -246,11 +246,13 @@ task.start(ip => {
     if (scannedResult.has(ip)) {
         return Promise.resolve();
     }
-    const stdoutFormatter = process.stdout.isTTY ? formmater : text => text;
-    const stderrFormatter = process.stderr.isTTY ? formmater : text => text;
+    const isStdoutTTY = process.stdout.isTTY;
+    const isStderrTTY = process.stderr.isTTY;
+    const stdoutFormatter = isStdoutTTY ? formmater : text => text;
+    const stderrFormatter = isStderrTTY ? formmater : text => text;
     return detectSNIProxy(ip, testDomains, timeout).then(() => {
         if (!silent) {
-            const text = isInteractiveMode ?
+            const text = isInteractiveMode || isStdoutTTY ?
                 `${ip} ${stdoutFormatter("OK", "green")}` :
                 stdoutFormatter(ip, "green");
             console.log(text);
@@ -260,7 +262,7 @@ task.start(ip => {
         }
     }, ex => {
         if (!silent) {
-            const text = isInteractiveMode ?
+            const text = isInteractiveMode || isStderrTTY ?
                 `${ip} ${stderrFormatter("Failure", "red")}` :
                 stderrFormatter(ip, "red");
             console.error(text);
