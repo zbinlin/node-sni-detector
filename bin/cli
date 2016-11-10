@@ -75,6 +75,7 @@ const [scannedResult, scanLogger] = (function () {
     const out = program.continue === true ?
         path.join(process.cwd(), DEFAULT_SCAN_RESULT_FILENAME) :
         program.continue;
+    console.log(out, program.continue);
 
     let scanned;
     try {
@@ -254,7 +255,12 @@ task.start(ip => {
             console.log(text);
         }
         if (output) {
-            return write(output, `${ip}\n`);
+            return Promise.all([
+                write(output, `${ip}\n`),
+                write(scanLogger, `${ip},OK\n`),
+            ]);
+        } else {
+            return write(scanLogger, `${ip},OK\n`);
         }
     }, ex => {
         if (!silent) {
@@ -266,6 +272,7 @@ task.start(ip => {
                 } ${String(ex.message || ex).trim()}`);
             }
         }
+        return write(scanLogger, `${ip},Failure\n`);
     });
     function formmater(text, color) {
         switch (color) {
