@@ -65,8 +65,8 @@ class Env {
 }
 
 describe("test cli", () => {
-    describe("test -c, --continue with default parameter", () => {
-        const env = new Env();
+    describe("test -c, --continue", () => {
+        let env = new Env();
         before(() => {
             return env.create();
         });
@@ -89,16 +89,7 @@ describe("test cli", () => {
                 });
             });
         });
-    });
-    describe("test -c, --continue with special file", () => {
         const FILENAME = "test.txt";
-        const env = new Env();
-        before(() => {
-            return env.create();
-        });
-        after(() => {
-            return env.destory();
-        });
         it(`创建一个 ${FILENAME} 文件，当使用 -c, --continue 参数后面加上 ${FILENAME} 时`, () => {
             return env.ready.then(folder => {
                 return combineExec(
