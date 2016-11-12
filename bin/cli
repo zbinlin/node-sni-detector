@@ -75,7 +75,6 @@ const [scannedResult, scanLogger] = (function () {
     const out = program.continue === true ?
         path.join(process.cwd(), DEFAULT_SCAN_RESULT_FILENAME) :
         program.continue;
-    console.log(out, program.continue);
 
     let scanned;
     try {
