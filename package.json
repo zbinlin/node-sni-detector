@@ -1,6 +1,6 @@
 {
   "name": "sni-detector",
-  "version": "2.1.7",
+  "version": "2.1.8",
   "description": "用于验证 SNI 服务器",
   "main": "index.js",
   "bin": {
