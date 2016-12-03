@@ -35,7 +35,6 @@ program
     .action(function (ips) {
         for (const ip of ips) {
             if (net.isIP(ip) !== 4 && !ipHelper.isIPRange(ip)) {
-                console.log(net.isIP(ip), ipHelper.isIPRange(ip));
                 console.error(`${ip} 不是一个有效的 IP 或 IP range`);
                 process.exit(1);
             }
