@@ -46,3 +46,21 @@ sni-detect --help
 
 `--timeout` 该参数主要用于每个被测连接的超时。默认为 10s，如果希望跳过响应过慢的 IP，可以将
 参数设置的小点。
+
+
+
+## 作为 module 使用
+
+```javascript
+const detect = require("sni-detector");
+
+/**
+ * @param {string|Stream} input
+ * @param {string|string[]} serverNames
+ * @param {number} timeout
+ * @param {number} [parallels=1]
+ * @param {Function} [filter=noop] - 如果调用 filter 返回 true，将忽略该 ip
+ * @return {Observable} observable-like object
+ */
+detect(input, serverNames, timeout, parallels, filter);
+```

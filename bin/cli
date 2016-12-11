@@ -7,14 +7,12 @@ const path = require("path");
 const stream = require("stream");
 const fs = require("fs");
 const program = require("commander");
+const schedule = require("../lib/scheduler");
 const pkg = require("../package.json");
-const Task = require("../lib/task");
-const detectSNI = require("../lib/detect-sni-servernames");
 const ipHelper = require("ip-helper");
 
 const DEFAULT_SCAN_RESULT_FILENAME = "scan-result.txt";
 const DEFAULT_TEST_SERVER_NAME = ["www.baidu.com", "www.google.com"];
-const MAX_BUFFER_LINES = 65535;
 const DEFAULT_PARALLELS = 8;
 const DEFAULT_TIMEOUT = 10000; // 10s
 
@@ -50,12 +48,7 @@ const input = (() => {
             encoding: "utf8",
         });
     } else if (ipList) {
-        return new stream.Readable({
-            read(size) {
-                this.push(ipList.join("\n"));
-                this.push(null);
-            },
-        });
+        return ipList.join("\n");
     } else {
         return process.stdin;
     }
@@ -118,184 +111,78 @@ function write(stream, data) {
     });
 }
 
-function isIterable(iter) {
-    return iter && typeof iter === "object" && typeof iter.next === "function";
+function formmater(text, color) {
+    switch (color) {
+        case "green":
+            return `\u001b[32m${text}\u001b[39m`;
+        case "red":
+            return `\u001b[31m${text}\u001b[39m`;
+        case "yellow":
+            return `\u001b[33m${text}\u001b[39m`;
+        default:
+            return text;
+    }
 }
 
-function getNextIp(ips) {
-    if (ips.length === 0) return;
-    const ip = ips.shift();
-    if (isIterable(ip)) {
-        const { value, done } = ip.next();
-        if (done) {
-            return getNextIp(ips);
+function filter(ip) {
+    return scannedResult.has(ip);
+}
+
+const isStdoutTTY = process.stdout.isTTY;
+const isStderrTTY = process.stderr.isTTY;
+
+const subscription = schedule(input, testDomains, timeout, parallels, filter);
+subscription.subscribe({
+    start() {
+        if (isInteractiveMode) {
+            console.error("进入交互模式，按 <CTRL+D> 退出程序");
+            if (program.out) {
+                console.warn("注意，在交互模式下，-o, --out 参数将被忽略");
+            }
+        }
+    },
+    next(state) {
+        const { ip, success, reason } = state;
+        if (success) {
+            if (!silent) {
+                const text = isStdoutTTY ? `${ip} ${formmater("OK", "green")}` : ip;
+                console.log(text);
+            }
+            if (output) {
+                return Promise.all([
+                    write(output, `${ip}\n`),
+                    write(scanLogger, `${ip},OK\n`),
+                ]);
+            } else {
+                return write(scanLogger, `${ip},OK\n`);
+            }
         } else {
-            ips.unshift(ip);
-            return value;
-        }
-    } else if (ipHelper.isIPRange(ip)) {
-        const iter = ipHelper.convertIPRangeToIterator(ip);
-        ips.unshift(iter);
-        return getNextIp(ips);
-    } else {
-        return ip;
-    }
-}
-
-const task = new Task(parallels, () => {
-    if (isInteractiveMode) {
-        console.error("进入交互模式，按 <CTRL+D> 退出程序");
-        if (program.out) {
-            console.warn("注意，在交互模式下，-o, --out 参数将被忽略");
-        }
-    }
-    input.on("data", onData);
-    input.once("end", onEnd);
-    input.on("error", onError);
-    input.pause();
-    const lines = [];
-    let finished = false;
-    let remaining = "";
-    const pendings = [];
-    return {
-        next() {
-            return new Promise((resolve, reject) => {
-                const line = getNextIp(lines);
-                if (line) {
-                    resolve({
-                        value: line,
-                    });
-                } else if (finished) {
-                    resolve({
-                        done: true,
-                    });
-                } else {
-                    pendings.push([resolve, reject]);
-                    input.resume();
+            if (!silent) {
+                const text = isStderrTTY ?  `${ip} ${formmater("Failure", "red")}` : ip;
+                console.error(text);
+                if (verbose) {
+                    console.error(`${
+                        (isStderrTTY ? formmater : v => v)("   Error:", "yellow")
+                    } ${String(reason.message || reason).trim()}`);
                 }
-            });
-        },
-        return() {
-            input.removeListener("data", onData);
-            input.removeListener("end", onEnd);
-            input.removeListener("error", onError);
-            lines.length = 0;
-            finished = true;
-            for (const [resolve] of pendings) {
-                resolve({
-                    done: true,
-                });
             }
-            pendings.length = 0;
-            return Promise.resolve({
-                done: true,
-            });
-        },
-    };
-    function onData(data) {
-        const mul = (remaining + data).split("\n");
-        remaining = mul.pop();
-        if (mul.length) {
-            lines.push(...mul);
+            return write(scanLogger, `${ip},Failure\n`);
         }
-        tryResolvePendings();
-        if (lines.length > MAX_BUFFER_LINES) {
-            input.pause();
-        }
-    }
-    function onEnd() {
-        finished = true;
-        if (remaining) {
-            lines.push(remaining);
-            remaining = "";
-        }
-        input.removeListener("data", onData);
-        tryResolvePendings();
-    }
-    function onError(err) {
-        input.removeListener("data", onData);
-        lines.length = 0;
-        finished = true;
-        tryResolvePendings();
-    }
-    function tryResolvePendings() {
-        if (pendings.length === 0) return;
-        const line = getNextIp(lines);
-        if (!line && finished) {
-            for (const [resolve] of pendings) {
-                process.nextTick(() => {
-                    resolve({
-                        done: true,
-                    });
-                });
-            }
-        } else if (line) {
-            const [resolve] = pendings.shift();
-            process.nextTick(() => {
-                resolve({
-                    value: line,
-                });
-            });
-            tryResolvePendings();
-        }
-    }
-});
-
-task.start(ip => {
-    if (scannedResult.has(ip)) {
-        return Promise.resolve();
-    }
-    const isStdoutTTY = process.stdout.isTTY;
-    const isStderrTTY = process.stderr.isTTY;
-    return detectSNI(ip, testDomains, timeout).then(() => {
-        if (!silent) {
-            const text = isStdoutTTY ? `${ip} ${formmater("OK", "green")}` : ip;
-            console.log(text);
-        }
-        if (output) {
-            return Promise.all([
-                write(output, `${ip}\n`),
-                write(scanLogger, `${ip},OK\n`),
-            ]);
-        } else {
-            return write(scanLogger, `${ip},OK\n`);
-        }
-    }, ex => {
-        if (!silent) {
-            const text = isStderrTTY ?  `${ip} ${formmater("Failure", "red")}` : ip;
-            console.error(text);
-            if (verbose) {
-                console.error(`${
-                    (isStderrTTY ? formmater : v => v)("   Error:", "yellow")
-                } ${String(ex.message || ex).trim()}`);
-            }
-        }
-        return write(scanLogger, `${ip},Failure\n`);
-    });
-    function formmater(text, color) {
-        switch (color) {
-            case "green":
-                return `\u001b[32m${text}\u001b[39m`;
-            case "red":
-                return `\u001b[31m${text}\u001b[39m`;
-            case "yellow":
-                return `\u001b[33m${text}\u001b[39m`;
-            default:
-                return text;
-        }
-    }
-}).then(() => {
-    output && output.end();
-    scanLogger.end();
-}, ex => {
-    output && output.end();
-    scanLogger.end();
-    console.error(ex);
+    },
+    complete() {
+        output && output.end();
+        scanLogger.end();
+    },
+    error(err) {
+        output && output.end();
+        scanLogger.end();
+        console.error(err);
+    },
 });
 
 process.on("SIGINT", () => {
     if (isInteractiveMode) {
         process.stdin.end();
     }
-    task.stop();
+    subscription.unsubscribe();
 });
