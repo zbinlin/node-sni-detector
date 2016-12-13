@@ -131,8 +131,8 @@ function filter(ip) {
 const isStdoutTTY = process.stdout.isTTY;
 const isStderrTTY = process.stderr.isTTY;
 
-const subscription = schedule(input, testDomains, timeout, parallels, filter);
-subscription.subscribe({
+const observable = schedule(input, testDomains, timeout, parallels, filter);
+const subscription = observable.subscribe({
     start() {
         if (isInteractiveMode) {
             console.error("进入交互模式，按 <CTRL+D> 退出程序");
