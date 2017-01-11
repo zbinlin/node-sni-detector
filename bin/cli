@@ -10,6 +10,7 @@ const program = require("commander");
 const schedule = require("../lib/scheduler");
 const pkg = require("../package.json");
 const ipHelper = require("ip-helper");
+const timeParse = require("../lib/time-parse");
 
 const DEFAULT_SCAN_RESULT_FILENAME = "scan-result.txt";
 const DEFAULT_TEST_SERVER_NAME = ["www.baidu.com", "www.google.com"];
@@ -98,7 +99,7 @@ const parallels = program.parallels || DEFAULT_PARALLELS;
 const testDomains = typeof program.tests !== "string" ?
     DEFAULT_TEST_SERVER_NAME : program.tests.split(",");
 
-const timeout = program.timeout ?  parseInt(program.timeout, 10) : DEFAULT_TIMEOUT;
+const timeout = timeParse(program.timeout) || DEFAULT_TIMEOUT;
 
 function write(stream, data) {
     return new Promise((resolve, reject) => {
