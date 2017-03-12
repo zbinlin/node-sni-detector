@@ -64,6 +64,28 @@ describe("test readLine function", () => {
             expect(result.join("\n")).to.be.eq(expected);
         });
     });
+    describe("line ending", () => {
+        it("unix", () => {
+            const expected = "有草焉，名曰鬼草，\n其叶如葵而赤茎，\n其秀如禾，服之不忧。";
+            return spawn(readLine(createStreamFromString(expected))).then(result => {
+                expect(result.length).to.be.eq(3);
+            });
+        });
+
+        it("dos", () => {
+            const expected = "有草焉，名曰鬼草，\r\n其叶如葵而赤茎，\r\n其秀如禾，服之不忧。";
+            return spawn(readLine(createStreamFromString(expected))).then(result => {
+                expect(result.length).to.be.eq(3);
+            });
+        });
+
+        it("mac", () => {
+            const expected = "有草焉，名曰鬼草，\r其叶如葵而赤茎，\r其秀如禾，服之不忧。";
+            return spawn(readLine(createStreamFromString(expected))).then(result => {
+                expect(result.length).to.be.eq(3);
+            });
+        });
+    });
 });
 
 describe("test createReadableStreamFromString function", () => {
